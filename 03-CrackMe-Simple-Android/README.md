@@ -1,4 +1,4 @@
-# CrackMe Simple
+# CrackMe Simple - Android
 
 > Author : jul0105
 > Date : 02.03.2021
