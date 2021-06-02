@@ -7,6 +7,8 @@
 
 ## Challenge info
 
+**Release** : Bundle 1 (01.03)
+
 **Difficulty** : Novice
 
 **Goal** : Solve the 15 regexp challenges.
