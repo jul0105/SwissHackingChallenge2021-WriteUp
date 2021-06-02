@@ -21,9 +21,7 @@
 
 
 
-
-
-**Important**: This write-up was written on Typora using non-standard markdown features. [Please open the HTML file](README.html) if you don't view this using Typora.
+**Important**: This write-up was written on Typora using non-standard markdown features. [Please open the PDF file](README.pdf) if you don't view this using Typora.
 
 
 
