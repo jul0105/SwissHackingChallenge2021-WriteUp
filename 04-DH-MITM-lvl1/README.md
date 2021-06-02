@@ -21,6 +21,10 @@
 
 
 
+**Important**: This write-up was written on Typora using non-standard markdown features. [Please open the HTML file](README.html) if you don't view this using Typora.
+
+
+
 ## Solve
 
 1. Firstly, this is how the initial transmissions are made between Alice and Bob :

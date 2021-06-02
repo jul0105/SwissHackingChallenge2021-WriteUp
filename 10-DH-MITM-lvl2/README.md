@@ -23,6 +23,10 @@
 
 
 
+**Important**: This write-up was written on Typora using non-standard markdown features. [Please open the HTML file](README.html) if you don't view this using Typora.
+
+
+
 This challenge was very interesting. Unfortunately, I made a mistake early on the solving that made me look to wrong paths for a long time.
 
 
