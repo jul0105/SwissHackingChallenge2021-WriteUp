@@ -1,51 +1,36 @@
 
 
-# Diffie-Hellman Man-In-The-Middle, level 1
+# Diffie-Hellman Man-In-The-Middle, level 2
 
 > Author : jul0105
-> Date : 13.03.2021
+> Date : 06.04.2021
 
 
 
 ## Challenge info
 
-**Release** : Bundle 1 (01.03)
+**Release** : Bundle 3 (27.03)
 
-**Difficulty** : Medium
+**Difficulty** : Hard
 
 **Goal** :
 
 - Compromise the key exchange between Alice and Bob.
-- Decrypt the flag sent by Alice.
+- Retrieve the flag from Alice and decrypt it.
 - Submit flag and write-up (see below)
+
+
+
+
+
+This challenge was very interesting. Unfortunately, I made a mistake early on the solving that made me look to wrong paths for a long time.
 
 
 
 ## Solve
 
-1. Firstly, this is how the initial transmissions are made between Alice and Bob :
+1. Firstly, here is how the exchange are operated between Alice, Bob and the Hacker on the first level of this challenge (no change since last time) :
 
-```sequence
-Note over Alice,Bob: Key exchange
-Note over Alice: Generate a and pubA
-Alice->Bob: g, p, phi, pubA, salt
-Note over Bob: Generate b and pubB
-Note over Bob: Calculate key
-Bob->Alice: pubB
-Note over Alice: Calculate key
-
-
-Note over Alice,Bob: Start messages transmission
-Note over Alice: Encrypt message
-Alice->Bob: nonce1, ctxt1, tag2
-Note over Bob: Decrypt message
-Note over Bob: Encrypt another message
-Bob->Alice: nonce2, ctxt2, tag2
-Note over Alice: Decrypt message
-Note over Alice,Bob: Repeat for next messages...
-```
-
-2. And this is how we, as a hacker, want to change the transmissions to be the Man In The Middle :
 
 ```sequence
 participant Alice
@@ -83,57 +68,25 @@ Note over Alice: Decrypt message with key1
 Note over Alice,Bob: Repeat for next messages...
 ```
 
-To summary this diagram, we need to **intercept every transmission** between Alice and Bob, **drop the package and craft a new one**. 
+2. Now, this second challenge adds a Trusted Third Party that is used to validated that Alice's key and Bob's key are the same.
 
+3. Since $K_A$ and $K_B$ has to be the same, the simplest way to guarantee this equality is to set private parameter $a'$ et $b'$ to $0$.
+4. Here are some calculation :
+   1. To communicate with Bob, we pick: $a' = 0$ 
+   2. Then calculate and send to Bob: $A' \equiv g^{a'} \equiv g^0 \equiv 1 \pmod{p}$
+   3. Bob pick $b$ and send $B$ back.
+   4. Our shared key between Hacker and Bob is $K_{B} \equiv g^{a'b} \equiv g^{0b} \equiv 1 \pmod{p}$
+5. Same thing between Alice and Hacker : 
+   1. To communicate with Alice, we pick: $b' = 0$ 
+   2. Then calculate and send to Alice: $B' \equiv g^{b'} \equiv g^0 \equiv 1 \pmod{p}$
+   3. Our shared key between Hacker and Bob is $K_{A} \equiv g^{ab'} \equiv g^{0a} \equiv 1 \pmod{p}$
 
-
-3. To be able to craft valid package we need 4 functions :
-   1. one to generate Diffie Hellman parameters a and pubA or b and pubB
-   2. one to calculate the key
-   3. one to encrypt
-   4. and one to decrypt
-
-```python
-from Crypto.Protocol.KDF import scrypt
-from Crypto.Cipher import AES
-from random import randrange
-
-AES_KEY_LEN = 16
-
-def generate_param(g, p, q):
-    a = randrange(q)
-    pubA = pow(g, a, p)
-    return (a, pubA)
-
-def generate_key(priv, pub, p):
-    return pow(pub, priv, p)
-
-def encrypt(dh_key, salt, msg, p):
-    key_bytes   = dh_key.to_bytes((p.bit_length() + 7) // 8, "big")
-    aes_enc_key = scrypt(key_bytes, salt, AES_KEY_LEN, N=2**14, r=8, p=1)
-    cipher      = AES.new(aes_enc_key, AES.MODE_GCM)
-    ctxt, tag   = cipher.encrypt_and_digest(msg)
-    return (ctxt, tag, cipher.nonce)
-
-def decrypt(dh_key, salt, ciphertext, tag, nonce, p):
-    key_bytes   = dh_key.to_bytes((p.bit_length() + 7) // 8, "big")
-    aes_enc_key = scrypt(key_bytes, salt, AES_KEY_LEN, N=2**14, r=8, p=1)
-    cipher      = AES.new(aes_enc_key, AES.MODE_GCM, nonce=nonce)
-    plaintext   = cipher.decrypt_and_verify(ciphertext, tag)
-    return plaintext
-```
-
-4. Then, I used the python package **`websockets`** to be able to communicate with the challenge from a script. For every step, a websocket is opened on the following endpoint :
+6. Now we have $K_A = K_B = 1$ so the key exchange is validated by the trusted third party
+7. Finally, we just need to send `Please` to Alice for her to send the UUID :
 
 ```
-wss://<UUID>.idocker.vuln.land/api/deploy/task?argument=<arg>
+74c34938-959b-4c0d-9dbb-c20f8ef4f38a
 ```
-
-Where **\<arg\>** is the value to send to the challenge. 
-
-5. Now that we have implemented the necessary functions to craft package and communication with the challenge, it's time to script the behavior explained in the second diagram. This means intercept and modify key exchange transmission between Alice and Bob. Calculate each key pair. And then intercepts all followings messages to re-encrypt it with the appropriate key.
-
-   For more details, see the full scripts at the end of this write-up
 
 
 
@@ -141,23 +94,30 @@ Where **\<arg\>** is the value to send to the challenge.
 
 **Which flaw in the protocol did you exploit?**
 
-The key exchange transmission doesn't guarantee authentication nor integrity. This means that when Alice send pubA to Bob, Bob has no way to be assured that pubA really originate from Alice, and that pubA has not been modified by a third party.
+As explained before, by picking 0 as a private parameter, we can completely void the other party's private parameter, due to the property of 0 in multiplication.
+
+This is the only value in $\Z_p$ that can be used to calculate $K$ without knowing the other party's private parameter.
+
+
 
 **How can this flaw be mitigated?**
 
-It is necessary to use an authenticated canal to transmit the key exchange. 
+It shouldn't be allowed to pick 0 as a private parameter because it completely break the system. Luckily, it is easily avoidable because the public parameter associated will always be equal to 1.
 
-This can be done signing the key exchange package (pubA and pubB) using a public/private key pair certified by a Certificate Authority trusted by Alice and Bob. 
+So when a party receive a public parameter that is equal to 1, it should refuse it.
 
-This certificate allow each party to prove the ownership of the public key. So with the signature of the key exchange packages, Bob can be assured that the package really come from Alice and that the package has not been modified.
+Another solution would be to refuse K = 1.
 
 
 
 ## Full scripts
 
-**dh_function.py** :
+Here are the full python scripts. They don't have changed much since the last level. For more details on the scripts, refer to first level's write up.
+
+**dh_functions.py :**
 
 ```python
+import base64
 from Crypto.Protocol.KDF import scrypt
 from Crypto.Cipher import AES
 from random import randrange
@@ -165,12 +125,13 @@ from random import randrange
 AES_KEY_LEN = 16
 
 def generate_param(g, p, q):
-    a = randrange(q)
+    #a = randrange(q)
+    a = 0 # Lvl2
     pubA = pow(g, a, p)
     return (a, pubA)
 
-def generate_key(priv, pub, p):
-    return pow(pub, priv, p)
+def generate_key(a, pubB, p):
+    return pow(pubB, a, p)
 
 def encrypt(dh_key, salt, msg, p):
     key_bytes   = dh_key.to_bytes((p.bit_length() + 7) // 8, "big")
@@ -189,7 +150,7 @@ def decrypt(dh_key, salt, ciphertext, tag, nonce, p):
 
 
 
-**solve.py** :
+**solve.py :**
 
 ```python
 # pip install websockets
@@ -204,7 +165,7 @@ import dh_functions
 
 debug = False
 
-domain = "6338c24a-b602-4496-b75e-4e6fff0db695.idocker.vuln.land"
+domain = "c02e7e85-ed56-410b-92e3-466a49b9d01c.idocker.vuln.land"
 base_url = "wss://" + domain + "/api/deploy/"
 
 async def read_from_ws_exec(task, force_debug=False):
@@ -227,24 +188,26 @@ async def read_from_ws_exec(task, force_debug=False):
 async def read_from_ws(task, force_debug=False):
     res = await read_from_ws_exec(task, force_debug)
     
-    if 'been detected!' in res:
+    if 'been detected!' in res or 'noticed suspicious behaviour' in res:
         print("FAILED")
         exit()
         
     if debug:
         print("\n\n")
         
-    time.sleep(1)
+    time.sleep(0.01)
     return res
 
 
 async def main():
     print("[+] Reset")
     await read_from_ws("") # Reset
+    time.sleep(1)
     
     
     print("[+] Init...")
     await read_from_ws("task") # Init
+    time.sleep(1)
     
     
     # Intercept Alice -> Bob (g, p, q, A, salt)
@@ -262,13 +225,21 @@ async def main():
     phi_dec = base64_to_int(phi)
     pubA_dec = base64_to_int(pubA)
     salt_dec = base64.b64decode(salt)
+    print('g_dec:', g_dec)
+    print('p_dec:', p_dec)
+    print('phi_dec:', phi_dec)
+    print('pubA_dec:', pubA_dec)
+    print('salt_dec:', salt_dec)
 
     
     # Generate ax and Ax
     print("[+] Generate corrupted ax and pubAx")
     ax_dec, pubAx_dec = dh_functions.generate_param(g_dec, p_dec, phi_dec)
     pubAx = int_to_base64(pubAx_dec, 256)
-    
+    print('ax_dec:', ax_dec)
+    print('pubAx_dec:', pubAx_dec)
+    print('pubAx:', pubAx)
+
     
     # Hacker -> Bob (g, p, q, Ax, salt)
     print("[+] Drop package and craft a new package for Bob")
@@ -290,13 +261,15 @@ async def main():
     obj2 = extract_data(res2)
     pubB = obj2['pubB']
     pubB_dec = base64_to_int(pubB)
+    print('pubB_dec:', pubB_dec)
     
     
     # Generate bx and Bx
     print("[+] Generate corrupted bx and pubBx")
-
     bx_dec, pubBx_dec = dh_functions.generate_param(g_dec, p_dec, phi_dec)
     pubBx = int_to_base64(pubBx_dec, 256)
+    print('bx_dec:', bx_dec)
+    print('pubBx_dec:', pubBx_dec)
     
     
     # Alice <- Hacker (Bx)
@@ -320,7 +293,8 @@ async def main():
     print("[+] Calculate Bob's key")
     key_bob = dh_functions.generate_key(ax_dec, pubB_dec, p_dec)
 
-    for j in range(20):
+    for j in range(3):
+        print("\n[#] Starting loop " + str(j) +"\n")
         from_alice = True
         if j % 2:
             from_alice = False
@@ -352,7 +326,12 @@ async def main():
         print("[+] Decrypt message")
         msg1 = dh_functions.decrypt(decryption_key, salt_dec, ctxt_dec, tag_dec, nonce_dec, p_dec)
         print('   [*] message: ', msg1)
-
+        
+        
+        if j == 1:
+            msg1 = b'Please' # Lvl2
+            print('   [*] changed message: ', msg1)
+        
 
         print("[+] Encrypt message")
         ctxt_dec, tag_dec, nonce_dec = dh_functions.encrypt(encryption_key, salt_dec, msg1, p_dec)
@@ -398,4 +377,6 @@ def int_to_base64(i, bit_length):
 
 asyncio.get_event_loop().run_until_complete(main())
 ```
+
+
 
